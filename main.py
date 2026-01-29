@@ -47,16 +47,23 @@ def main():
                     player_clicked = []
                 else:
                     sq_selected = (row, col)
-                    player_clicked.append(sq_selected)
+                    player_clicked.append(sq_selected)  # pyright: ignore
                 if len(player_clicked) == 2:
-                    move = engine.Move(player_clicked[0], player_clicked[1], gs.board)
-                    if move in valid_moves:
-                        gs.makeMove(move)
-                        move_made = True
-                        sq_selected = ()
-                        player_clicked = []
-
-                    else:
+                    move_made_flag = False
+                    for valid_move in valid_moves:
+                        if (
+                            valid_move.start_row == player_clicked[0][0]
+                            and valid_move.start_col == player_clicked[0][1]
+                            and valid_move.end_row == player_clicked[1][0]
+                            and valid_move.end_col == player_clicked[1][1]
+                        ):
+                            gs.makeMove(valid_move)
+                            move_made = True
+                            sq_selected = ()
+                            player_clicked = []
+                            move_made_flag = True
+                            break
+                    if not move_made_flag:
                         player_clicked = [sq_selected]
 
             # undo move
@@ -69,7 +76,7 @@ def main():
             valid_moves = gs.get_valid_moves()
             move_made = False
 
-        draw_gameState(window, gs)
+        draw_gameState(window, gs, valid_moves, sq_selected)
         clock.tick(fps)
         p.display.update()
 
@@ -77,9 +84,81 @@ def main():
 """Graphics Rendering"""
 
 
-def draw_gameState(display, gs):
+def draw_gameState(display, gs, valid_moves, sq_selected):
     draw_board(display)
     draw_pieces(display, gs.board)
+    highlight_sq(display, gs, valid_moves, sq_selected)
+    highlight_last_sq(display, gs)
+    highlight_check(display, gs)
+
+
+def highlight_sq(display, gs, valid_moves, sq_selected):
+    if sq_selected == ():
+        return
+    row, col = sq_selected
+
+    if gs.board[row][col] == "--":
+        return
+    if (gs.board[row][col][0] == "w" and not gs.white_to_move) or (
+        gs.board[row][col][0] == "b" and gs.white_to_move
+    ):
+        return
+
+    s = p.Surface((SQ_SIZE, SQ_SIZE))
+    s.set_alpha(120)
+
+    s.fill(p.Color("blue"))
+    display.blit(s, (col * SQ_SIZE, row * SQ_SIZE))
+
+    s.fill(p.Color("green"))
+
+    for move in valid_moves:
+        if move.start_row == row and move.start_col == col:
+            end_r, end_c = move.end_row, move.end_col
+            if gs.board[end_r][end_c] == "--":
+                p.draw.circle(
+                    display,
+                    p.Color("green"),
+                    (
+                        end_c * SQ_SIZE + SQ_SIZE // 2,
+                        end_r * SQ_SIZE + SQ_SIZE // 2,
+                    ),
+                    SQ_SIZE // 6,
+                )
+            else:
+                p.draw.circle(
+                    display,
+                    p.Color("red"),
+                    (
+                        end_c * SQ_SIZE + SQ_SIZE // 2,
+                        end_r * SQ_SIZE + SQ_SIZE // 2,
+                    ),
+                    SQ_SIZE // 2 - 5,
+                    4,
+                )
+
+
+def highlight_last_sq(display, gs):
+    if len(gs.movelog) == 0:
+        return
+
+    move = gs.movelog[-1]
+    s = p.Surface((SQ_SIZE, SQ_SIZE))
+    s.set_alpha(120)
+    s.fill(p.Color("yellow"))
+
+    display.blit(s, (move.start_col * SQ_SIZE, move.start_row * SQ_SIZE))
+    display.blit(s, (move.end_col * SQ_SIZE, move.end_row * SQ_SIZE))
+
+
+def highlight_check(display, gs):
+    if not gs.in_check:
+        return
+    row, col = gs.white_king if gs.white_to_move else gs.black_king
+    s = p.Surface((SQ_SIZE, SQ_SIZE))
+    s.set_alpha(140)
+    s.fill(p.Color("red"))
+    display.blit(s, (col * SQ_SIZE, row * SQ_SIZE))
 
 
 def draw_board(display):
@@ -104,3 +183,10 @@ def draw_pieces(display, board):
 
 if __name__ == "__main__":
     main()
+    gs = engine.GameState()
+    print(engine.perft(gs, 1))
+    print(engine.perft(gs, 2))
+    print(engine.perft(gs, 3))
+    moves = gs.get_valid_moves()
+    for m in moves:
+        print(m.getChessNotation())
