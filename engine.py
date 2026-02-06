@@ -29,6 +29,7 @@ class GameState:
         self.pins = []
         self.checks = []
         self.en_passant_possible = ()
+        self.san_log = []
 
         self.current_castle_rights = CastleRights(True, True, True, True)
         self.castle_rights_log = [
@@ -250,7 +251,7 @@ class GameState:
         self.white_to_move = not self.white_to_move
         temp_castle_rights = self.current_castle_rights
         self.current_castle_rights = CastleRights(False, False, False, False)
-        op_move = self.get_pos_moves()
+        op_move = self.get_pos_moves(ignore_king=True)
         self.current_castle_rights = temp_castle_rights
         self.white_to_move = not self.white_to_move
         for move in op_move:
@@ -260,7 +261,7 @@ class GameState:
 
     """Generate moves without checks"""
 
-    def get_pos_moves(self):
+    def get_pos_moves(self, ignore_king=False):
         moves = []
         for row in range(len(self.board)):
             for col in range(len(self.board[row])):
@@ -270,6 +271,8 @@ class GameState:
                     if (turn == "w" and self.white_to_move) or (
                         turn == "b" and not self.white_to_move
                     ):
+                        if ignore_king and piece_str[1] == "K":
+                            continue
                         piece = piece_str[1]
                         self.move_func[piece](row, col, moves)
 
@@ -490,9 +493,10 @@ class GameState:
         )
         if self.white_to_move:
             ally_colour = "w"
+            enemy_colour = "b"
         else:
             ally_colour = "b"
-
+            enemy_colour = "w"
         for dr, dc in directions:
             if piece_pinned and (dr, dc) != pin_dir and (-dr, -dc) != pin_dir:
                 continue
@@ -501,8 +505,30 @@ class GameState:
 
             if 0 <= end_row < 8 and 0 <= end_col < 8:
                 end_piece = self.board[end_row][end_col]
-                if end_piece == "--" or end_piece[0] != ally_colour:
-                    moves.append(Move((row, col), (end_row, end_col), self.board))
+                if end_piece == "--" or end_piece[0] == enemy_colour:
+                    original_piece = self.board[end_row][end_col]
+                    original_pos = (
+                        self.white_king if ally_colour == "w" else self.black_king
+                    )
+                    self.board[row][col] = "--"
+                    self.board[end_row][end_col] = ally_colour + "K"
+
+                    if ally_colour == "w":
+                        self.white_king = (end_row, end_col)
+                    else:
+                        self.black_king = (end_row, end_col)
+
+                    in_check = self.square_under_attack(end_row, end_col)
+                    self.board[row][col] = ally_colour + "K"
+                    self.board[end_row][end_col] = original_piece
+
+                    if ally_colour == "w":
+                        self.white_king = original_pos
+                    else:
+                        self.black_king = original_pos
+
+                    if not in_check:
+                        moves.append(Move((row, col), (end_row, end_col), self.board))
 
     """Get moves for castle"""
 
@@ -616,6 +642,36 @@ class Move:
 
     def getRankFile(self, r, c):
         return self.colsToFiles[c] + self.rowsToRanks[r]
+
+    def getSAN(self, gs):
+        if self.can_castle:
+            return "O-O" if self.end_col == 6 else "O-O-O"
+
+        piece = self.piece_moved[1]
+        dest = self.getRankFile(self.end_row, self.end_col)
+
+        if piece == "p":
+            san = ""
+            if self.piece_cap != "--":
+                san += self.colsToFiles[self.start_col] + "x"
+            san += dest
+            if self.is_pawn_promoted:
+                san += "=Q"
+
+        else:
+            san = piece
+            if self.piece_cap != "--":
+                san += "x"
+            san += dest
+
+        gs.makeMove(self)
+        if gs.checkmate:
+            san += "#"
+        elif gs.in_check:
+            san += "+"
+        gs.undo_move()
+
+        return san
 
 
 class CastleRights:

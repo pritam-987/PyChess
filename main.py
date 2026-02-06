@@ -1,12 +1,21 @@
 import pygame as p
 
 import engine
+import movefinder
 
-size = WIDTH, HEIGHT = 512, 512
+size = WIDTH, HEIGHT = 700, 512
 DIMENSION = 8
 SQ_SIZE = HEIGHT // DIMENSION
 fps = 60
 IMAGES = {}
+play_again = p.Rect(620, 420, 160, 50)
+
+
+def mouse_debug(pos):
+    x, y = pos
+    if 0 <= x < 8 * SQ_SIZE and 0 <= y < 8 * SQ_SIZE:
+        return y // SQ_SIZE, x // SQ_SIZE
+    return None
 
 
 def load_images():
@@ -18,67 +27,219 @@ def load_images():
         )
 
 
+def draw_menu(screen):
+    screen.fill(p.Color("White"))
+    font = p.font.SysFont("arial", 40, bold=True)
+    small_font = p.font.SysFont("arial", 24)
+
+    title = font.render("Chess Game", True, p.Color("Black"))
+    pvp = small_font.render("Player Vs Player", True, p.Color("Black"))
+    pvai = small_font.render("Player Vs Ai", True, p.Color("Black"))
+
+    title_rect = title.get_rect(center=(WIDTH // 2, 100))
+
+    pvp_rect = p.Rect(WIDTH // 2 - 150, 220, 300, 60)
+    pvai_rect = p.Rect(WIDTH // 2 - 150, 320, 300, 60)
+
+    p.draw.rect(screen, p.Color("Lightgray"), pvp_rect, border_radius=10)
+    p.draw.rect(screen, p.Color("Lightgray"), pvai_rect, border_radius=10)
+
+    screen.blit(title, title_rect)
+    screen.blit(pvp, pvp.get_rect(center=pvp_rect.center))
+    screen.blit(pvai, pvai.get_rect(center=pvai_rect.center))
+
+    return pvp_rect, pvai_rect
+
+
+def endgame(screen, text):
+    font = p.font.SysFont("arial", 40, bold=True)
+    label = font.render(text, True, p.Color("Black"))
+    rect = label.get_rect(center=(WIDTH // 2, HEIGHT // 2))
+    screen.blit(label, rect)
+
+
+def draw_timer(screen, white_time, black_time):
+    font = p.font.SysFont("arial", 36, bold=True)
+
+    def format_time(time):
+        minutes = int(time) // 60
+        seconds = int(time) % 60
+        return f"{minutes:02}:{seconds:02}"
+
+    white_text = font.render(format_time(white_time), True, p.Color("Black"))
+    black_text = font.render(format_time(black_time), True, p.Color("Black"))
+
+    screen.blit(black_text, (WIDTH + 20, 40))
+    screen.blit(white_text, (WIDTH + 20, HEIGHT - 60))
+
+
+def draw_move_log(screen, gs):
+    y = 0
+    log_rect = p.Rect(WIDTH - 120, 10, 220, HEIGHT - 20)
+
+    font = p.font.SysFont("arial", 18)
+
+    for i in range(0, len(gs.san_log), 2):
+        text = f"{i // 2 + 1}. {gs.san_log[i]}"
+        if i + 1 < len(gs.san_log):
+            text += f"  {gs.san_log[i + 1]}"
+        text_obj = font.render(text, True, p.Color("Black"))
+        screen.blit(text_obj, (log_rect.x, log_rect.y + y))
+
+        y += 20
+
+
+def draw_play_again(screen):
+    font = p.font.SysFont("arial", 24)
+
+    p.draw.rect(screen, (40, 40, 40), play_again)
+    p.draw.rect(screen, (255, 255, 255), play_again, 2)
+
+    text = font.render("Play Again", True, (255, 255, 255))
+    screen.blit(text, (play_again.x + 20, play_again.y + 12))
+
+
 def main():
     p.init()
     window = p.display.set_mode((size))
     clock = p.time.Clock()
-    window.fill("White")
-    gs = engine.GameState()
-    valid_moves = gs.get_valid_moves()
-    move_made = False
     # images loaded only once before the game loop
     load_images()
-    run = True
-    sq_selected = ()
-    player_clicked = []
 
-    while run:
-        for event in p.event.get():
-            if event.type == p.QUIT:
-                run = False
+    while True:
+        gs = engine.GameState()
+        black_time = white_time = 1 * 60
+        last_tick = p.time.get_ticks()
+        valid_moves = gs.get_valid_moves()
+        move_made = False
+        run = True
+        sq_selected = ()
+        player_clicked = []
+        selected = True
+        in_menu = True
+        player_white = True
+        player_black = True
+        while in_menu:
+            pvp_rect, pvai_rect = draw_menu(window)
+            human_turn = (gs.white_to_move and player_white) or (
+                not gs.white_to_move and player_black
+            )
+            for event in p.event.get():
+                if event.type == p.QUIT:
+                    return
 
-            # mouse input
-            elif event.type == p.MOUSEBUTTONDOWN:
-                location = p.mouse.get_pos()
-                col = location[0] // SQ_SIZE
-                row = location[1] // SQ_SIZE
-                if sq_selected == (row, col):
-                    sq_selected = ()
-                    player_clicked = []
+                # mouse input
+                elif event.type == p.MOUSEBUTTONDOWN:
+                    if pvp_rect.collidepoint(event.pos):
+                        player_white = True
+                        player_black = True
+                        selected = False
+                        in_menu = False
+
+                    if pvai_rect.collidepoint(event.pos):
+                        player_white = True
+                        player_black = False
+                        selected = False
+                        in_menu = False
+
+            p.display.update()
+            clock.tick(fps)
+        while run:
+            human_turn = (gs.white_to_move and player_white) or (
+                not gs.white_to_move and player_black
+            )
+            current_tick = p.time.get_ticks()
+            dt = (current_tick - last_tick) / 1000
+            last_tick = current_tick
+
+            if not gs.checkmate and not gs.stalemate:
+                if gs.white_to_move:
+                    white_time -= dt
                 else:
-                    sq_selected = (row, col)
-                    player_clicked.append(sq_selected)  # pyright: ignore
-                if len(player_clicked) == 2:
-                    move_made_flag = False
-                    for valid_move in valid_moves:
-                        if (
-                            valid_move.start_row == player_clicked[0][0]
-                            and valid_move.start_col == player_clicked[0][1]
-                            and valid_move.end_row == player_clicked[1][0]
-                            and valid_move.end_col == player_clicked[1][1]
-                        ):
-                            gs.makeMove(valid_move)
-                            move_made = True
-                            sq_selected = ()
-                            player_clicked = []
-                            move_made_flag = True
-                            break
-                    if not move_made_flag:
-                        player_clicked = [sq_selected]
+                    black_time -= dt
 
-            # undo move
-            elif event.type == p.KEYDOWN:
-                if event.key == p.K_z:
-                    gs.undo_move()
+            white_time = max(0, white_time)
+            black_time = max(0, black_time)
+            for event in p.event.get():
+                if event.type == p.QUIT:
+                    return
+
+                if event.type == p.MOUSEBUTTONDOWN and (gs.checkmate or gs.stalemate):
+                    if play_again.collidepoint(event.pos):
+                        run = False
+                        break
+
+                elif event.type == p.MOUSEBUTTONDOWN and human_turn:
+                    square = mouse_debug(event.pos)
+                    if square is None:
+                        continue
+                    row, col = square
+
+                    if sq_selected == (row, col):
+                        sq_selected = ()
+                        player_clicked = []
+                    else:
+                        sq_selected = (row, col)
+                        player_clicked.append(sq_selected)
+
+                    if len(player_clicked) == 2:
+                        chosen_move = None
+
+                        for move in valid_moves:
+                            if (move.start_row, move.start_col) == player_clicked[
+                                0
+                            ] and (
+                                move.end_row,
+                                move.end_col,
+                            ) == player_clicked[1]:
+                                move_made = True
+                                chosen_move = move
+                                break
+                        if chosen_move:
+                            san = chosen_move.getSAN(gs)
+                            gs.makeMove(chosen_move)
+                            gs.san_log.append(san)
+                            move_made = True
+                        sq_selected = ()
+                        player_clicked = []
+
+            window.fill(p.Color("White"))
+
+            if not human_turn:
+                ai_move = movefinder.find_best_move(gs, depth=3)
+                if ai_move is not None:
+                    san = ai_move.getSAN(gs)
+                    gs.makeMove(ai_move)
+                    gs.san_log.append(san)
                     move_made = True
 
-        if move_made:
-            valid_moves = gs.get_valid_moves()
-            move_made = False
+            if move_made:
+                valid_moves = gs.get_valid_moves()
+                move_made = False
 
-        draw_gameState(window, gs, valid_moves, sq_selected)
-        clock.tick(fps)
-        p.display.update()
+            draw_gameState(window, gs, valid_moves, sq_selected)
+            draw_move_log(window, gs)
+            draw_timer(window, white_time, black_time)
+            if gs.checkmate:
+                if gs.white_to_move:
+                    endgame(window, "Black won by checkmate")
+                    draw_play_again(window)
+                else:
+                    endgame(window, "White won by checkmate")
+                    draw_play_again(window)
+
+            elif gs.stalemate:
+                endgame(window, "Stalemate")
+                draw_play_again(window)
+
+            if white_time <= 0:
+                gs.checkmate = True
+                endgame(window, "Black won by timeout")
+            elif black_time <= 0:
+                gs.checkmate = True
+                endgame(window, "White won by timeout")
+            clock.tick(fps)
+            p.display.update()
 
 
 """Graphics Rendering"""
@@ -187,6 +348,3 @@ if __name__ == "__main__":
     print(engine.perft(gs, 1))
     print(engine.perft(gs, 2))
     print(engine.perft(gs, 3))
-    moves = gs.get_valid_moves()
-    for m in moves:
-        print(m.getChessNotation())
