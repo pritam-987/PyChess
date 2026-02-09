@@ -7,15 +7,31 @@ def random_move(valid_moves):
     return random.choice(valid_moves)
 
 
+def safe_get_moves(gs):
+    old_checkmate = gs.checkmate
+    old_stalemate = gs.stalemate
+    old_in_check = gs.in_check
+
+    moves = gs.get_valid_moves()
+
+    gs.checkmate = old_checkmate
+    gs.stalemate = old_stalemate
+    gs.in_check = old_in_check
+
+    return moves
+
+
 """Depth 2 minimax"""
 piece_score = {"K": 0, "Q": 9, "R": 5, "B": 3, "N": 3, "p": 1}
 
 
 def utility(gs):
-    if gs.checkmate:
-        return -10000 if gs.white_to_move else 10000
-    if gs.stalemate:
-        return 0
+    moves = safe_get_moves(gs)
+    if len(moves) == 0:
+        if gs.in_check:
+            return -10000
+        else:
+            return 0
 
     score = 0
     for row in range(8):
@@ -35,13 +51,22 @@ def utility(gs):
 
 
 def ordered_moves(gs):
-    moves = gs.get_valid_moves()
-    moves.sort(key=lambda m: m.piece_cap != "--", reverse=True)
-    return moves
+    moves = safe_get_moves(gs)
+
+    def score(m):
+        if m.piece_cap == "--":
+            return 0
+        return 10 * piece_score[m.piece_cap[1]] - piece_score[m.piece_moved[1]]
+
+    moves.sort(key=score, reverse=True)
+    return moves[:12]
 
 
 def terminal(gs):
-    return gs.checkmate or gs.stalemate
+    moves = safe_get_moves(gs)
+    if len(moves) == 0:
+        return True
+    return False
 
 
 def minimax(gs, depth):
@@ -98,7 +123,7 @@ def min_value(gs, depth, alpha, beta):
 
 def max_value(gs, depth, alpha, beta):
     if terminal(gs) or depth == 0:
-        return utility(gs)
+        return quiescence(gs, alpha, beta)
 
     v = float("-inf")
     for move in ordered_moves(gs):
@@ -114,7 +139,7 @@ def max_value(gs, depth, alpha, beta):
 
 def negamax(gs, depth, alpha, beta, color):
     if depth == 0 or terminal(gs):
-        return color * utility(gs)
+        return utility(gs)
 
     max_eval = float("-inf")
 
@@ -149,3 +174,26 @@ def find_best_move(gs, depth):
         alpha = max(alpha, eval)
 
     return best_move
+
+
+def quiescence(gs, alpha, beta):
+    stand_pat = utility(gs)
+
+    if stand_pat >= beta:
+        return beta
+    if alpha < stand_pat:
+        alpha = stand_pat
+
+    for move in ordered_moves(gs):
+        if move.piece_cap == "--":
+            continue
+        gs.makeMove(move)
+        score = -quiescence(gs, -beta, -alpha)
+        gs.undo_move()
+
+        if score >= beta:
+            return beta
+        if score > alpha:
+            alpha = score
+
+    return alpha

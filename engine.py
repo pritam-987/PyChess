@@ -41,6 +41,11 @@ class GameState:
             )
         ]
 
+    def copy(self):
+        import copy
+
+        return copy.deepcopy(self)
+
     def makeMove(self, move):
         move.en_passant_possible = self.en_passant_possible
         self.board[move.start_row][move.start_col] = "--"
@@ -187,6 +192,25 @@ class GameState:
                             break
                 else:
                     break
+
+        knight_moves = (
+            (-2, -1),
+            (-2, 1),
+            (-1, -2),
+            (-1, 2),
+            (1, -2),
+            (1, 2),
+            (2, -1),
+            (2, 1),
+        )
+        for d in knight_moves:
+            r = start_row + d[0]
+            c = start_col + d[1]
+            if 0 <= r < 8 and 0 <= c < 8:
+                piece = self.board[r][c]
+                if piece[0] == enemy_colour and piece[1] == "N":
+                    in_check = True
+                    checks.append((r, c, d[0], d[1]))
         return in_check, pins, checks
 
     """Generate valid moves with checks"""

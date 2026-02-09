@@ -1,3 +1,7 @@
+import os
+import sys
+import threading
+
 import pygame as p
 
 import engine
@@ -9,6 +13,16 @@ SQ_SIZE = HEIGHT // DIMENSION
 fps = 60
 IMAGES = {}
 play_again = p.Rect(620, 420, 160, 50)
+
+
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and PyInstaller"""
+    try:
+        base_path = sys._MEIPASS  # PyInstaller temp folder
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
 
 
 def mouse_debug(pos):
@@ -23,7 +37,7 @@ def load_images():
     pieces = ["wp", "bp", "wB", "bB", "wK", "bK", "wN", "bN", "wQ", "bQ", "wR", "bR"]
     for piece in pieces:
         IMAGES[piece] = p.transform.scale(
-            p.image.load("images/" + piece + ".png"), (SQ_SIZE, SQ_SIZE)
+            p.image.load(resource_path(f"images/{piece}.png")), (SQ_SIZE, SQ_SIZE)
         )
 
 
@@ -49,6 +63,30 @@ def draw_menu(screen):
     screen.blit(pvai, pvai.get_rect(center=pvai_rect.center))
 
     return pvp_rect, pvai_rect
+
+
+def draw_color_menu(screen):
+    screen.fill(p.Color("White"))
+    font = p.font.SysFont("arial", 36, bold=True)
+    small_font = p.font.SysFont("arial", 24)
+
+    title = font.render("Choose Your Color", True, p.Color("Black"))
+    title_rect = title.get_rect(center=(WIDTH // 2, 100))
+
+    white_rect = p.Rect(WIDTH // 2 - 150, 220, 300, 60)
+    black_rect = p.Rect(WIDTH // 2 - 150, 320, 300, 60)
+
+    p.draw.rect(screen, p.Color("Lightgray"), white_rect, border_radius=10)
+    p.draw.rect(screen, p.Color("Lightgray"), black_rect, border_radius=10)
+
+    white_text = small_font.render("Play as White", True, p.Color("Black"))
+    black_text = small_font.render("Play as Black", True, p.Color("Black"))
+
+    screen.blit(title, title_rect)
+    screen.blit(white_text, white_text.get_rect(center=white_rect.center))
+    screen.blit(black_text, black_text.get_rect(center=black_rect.center))
+
+    return white_rect, black_rect
 
 
 def endgame(screen, text):
@@ -99,61 +137,77 @@ def draw_play_again(screen):
     screen.blit(text, (play_again.x + 20, play_again.y + 12))
 
 
+def ai_worker(gs_copy, result):
+    result["move"] = movefinder.find_best_move(gs_copy, depth=5)
+
+
 def main():
     p.init()
     window = p.display.set_mode((size))
+    p.display.set_caption("PyChess")
     clock = p.time.Clock()
     # images loaded only once before the game loop
     load_images()
+    ai_thinking = False
+    ai_move_result = None
+    ai_thread = None
 
     while True:
         gs = engine.GameState()
-        black_time = white_time = 1 * 60
+        active_color = "w"
+        black_time = white_time = 10 * 60
         last_tick = p.time.get_ticks()
         valid_moves = gs.get_valid_moves()
         move_made = False
         run = True
         sq_selected = ()
         player_clicked = []
-        selected = True
         in_menu = True
         player_white = True
         player_black = True
+        choose_color = False
+        pvp_rect = pvai_rect = None
+        white_rect = black_rect = None
         while in_menu:
-            pvp_rect, pvai_rect = draw_menu(window)
-            human_turn = (gs.white_to_move and player_white) or (
-                not gs.white_to_move and player_black
-            )
+            if not choose_color:
+                pvp_rect, pvai_rect = draw_menu(window)
+            else:
+                white_rect, black_rect = draw_color_menu(window)
+
             for event in p.event.get():
                 if event.type == p.QUIT:
                     return
 
-                # mouse input
-                elif event.type == p.MOUSEBUTTONDOWN:
-                    if pvp_rect.collidepoint(event.pos):
-                        player_white = True
-                        player_black = True
-                        selected = False
-                        in_menu = False
+                if event.type == p.MOUSEBUTTONDOWN:
+                    if not choose_color:
+                        if pvp_rect.collidepoint(event.pos):
+                            player_white = True
+                            player_black = True
+                            in_menu = False
 
-                    if pvai_rect.collidepoint(event.pos):
-                        player_white = True
-                        player_black = False
-                        selected = False
-                        in_menu = False
+                        elif pvai_rect.collidepoint(event.pos):
+                            choose_color = True
+                    else:
+                        if white_rect.collidepoint(event.pos):
+                            player_white = True
+                            player_black = False
+                            in_menu = False
+
+                        elif black_rect.collidepoint(event.pos):
+                            player_white = False
+                            player_black = True
+                            in_menu = False
 
             p.display.update()
-            clock.tick(fps)
+
         while run:
+            dt = clock.tick(fps) / 1000
             human_turn = (gs.white_to_move and player_white) or (
                 not gs.white_to_move and player_black
             )
-            current_tick = p.time.get_ticks()
-            dt = (current_tick - last_tick) / 1000
-            last_tick = current_tick
 
             if not gs.checkmate and not gs.stalemate:
-                if gs.white_to_move:
+                if active_color == "w":
                     white_time -= dt
                 else:
                     black_time -= dt
@@ -199,19 +253,30 @@ def main():
                             san = chosen_move.getSAN(gs)
                             gs.makeMove(chosen_move)
                             gs.san_log.append(san)
+                            active_color = "b" if active_color == "w" else "w"
                             move_made = True
                         sq_selected = ()
                         player_clicked = []
 
             window.fill(p.Color("White"))
 
-            if not human_turn:
-                ai_move = movefinder.find_best_move(gs, depth=3)
-                if ai_move is not None:
+            if not human_turn and not gs.checkmate and not gs.stalemate:
+                if not ai_thinking:
+                    ai_thinking = True
+                    ai_move_result = {"move": None}
+                    gs_copy = gs.copy()
+                    ai_thread = threading.Thread(
+                        target=ai_worker, args=(gs_copy, ai_move_result), daemon=True
+                    )
+                    ai_thread.start()
+                elif ai_move_result is not None and ai_move_result["move"] is not None:
+                    ai_move = ai_move_result["move"]
                     san = ai_move.getSAN(gs)
                     gs.makeMove(ai_move)
                     gs.san_log.append(san)
-                    move_made = True
+                    active_color = "b" if active_color == "w" else "w"
+                    valid_moves = gs.get_valid_moves()
+                    ai_thinking = False
 
             if move_made:
                 valid_moves = gs.get_valid_moves()
@@ -238,7 +303,6 @@ def main():
             elif black_time <= 0:
                 gs.checkmate = True
                 endgame(window, "White won by timeout")
-            clock.tick(fps)
             p.display.update()
 
 
