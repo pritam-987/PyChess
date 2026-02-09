@@ -23,20 +23,7 @@ This project is designed to be **educational, readable, and extendable**, not a 
 
 ## 📂 Project Structure
 
-chess-engine/
-│
-├── main.py # Game loop, UI, input handling
-├── engine.py # Chess rules & move generation
-├── movefinder.py # AI (minimax + evaluation)
-│
-├── images/ # Piece images
-│ ├── wp.png
-│ ├── bp.png
-│ ├── wK.png
-│ └── ...
-│
-├── README.md
-└── requirements.txt
+<img width="381" height="666" alt="image" src="https://github.com/user-attachments/assets/70d4a195-ad40-49fa-871b-5b60ec82fcb5" />
 
 
 ---
@@ -46,23 +33,8 @@ chess-engine/
 <img width="388" height="592" alt="image" src="https://github.com/user-attachments/assets/60624c30-090d-41cc-92f4-08f7bd037af4" />
 
 ## ♜ Move Flow
+<img width="196" height="236" alt="image" src="https://github.com/user-attachments/assets/08a1109e-a89b-4020-bde9-bebb69a42cf2" />
 
-Mouse Click
-|
-v
-Validate Move
-|
-v
-engine.makeMove()
-|
-v
-Update Board & SAN
-|
-v
-Switch Turn
-|
-v
-AI Thread (if PvAI)
 
 
 ---
@@ -112,5 +84,6 @@ These are **design decisions**, not bugs.
 ```bash
 pip install pygame-ce
 python main.py
+
 
 
