@@ -43,26 +43,29 @@ chess-engine/
 
 ## ♞ High-Level Architecture
 
-+------------------+
-| main.py |
-| UI & Game Loop |
-+--------+---------+
-|
-v
-+------------------+
-| engine.py |
-| Chess Rules |
-+--------+---------+
-|
-v
-+------------------+
-| movefinder.py |
-| AI |
-+------------------+
-
-
----
-
+┌──────────────┐
+│   Player /   │
+│     AI       │
+└──────┬───────┘
+       │ move request
+       v
+┌──────────────┐
+│  main.py     │
+│  (Game Loop) │
+└──────┬───────┘
+       │ validate / apply
+       v
+┌──────────────┐
+│ engine.py    │
+│ GameState    │
+│ Move Rules   │
+└──────┬───────┘
+       │ board snapshot
+       v
+┌──────────────┐
+│ movefinder.py│
+│ Minimax AI   │
+└──────────────┘
 ## ♜ Move Flow
 
 Mouse Click
@@ -130,3 +133,4 @@ These are **design decisions**, not bugs.
 ```bash
 pip install pygame-ce
 python main.py
+
